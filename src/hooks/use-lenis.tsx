@@ -21,7 +21,35 @@ import { useReducedMotion } from "./use-reduced-motion";
  * heading. Shared by the navbar links and by post-navigation anchor restore —
  * two copies of this number would drift apart.
  */
-export const ANCHOR_OFFSET = -88;
+export const ANCHOR_OFFSET = 50;
+
+/**
+ * How much of the trip stays animated after a teleport, as a fraction of the
+ * viewport. Keeps the landing readable — the destination arrives from the right
+ * direction instead of being cut to.
+ */
+const APPROACH_VIEWPORTS = 0.45;
+
+/**
+ * Does travelling between these two scroll positions pass through a pin?
+ *
+ * The Work track pins for ~6,500px and spends all of it translating sideways,
+ * so a smooth tween from the navbar to #contact has to scrub the entire
+ * horizontal timeline on the way down — every card strobes past. Crossing a pin
+ * is the thing worth skipping; a long jump through ordinary sections is just a
+ * long scroll and still looks fine tweened.
+ */
+function crossesPin(from: number, to: number) {
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+
+  return ScrollTrigger.getAll().some((trigger) => {
+    if (!trigger.pin) return false;
+    // Ignore a pin we merely touch at the edges — only a real traversal of the
+    // pinned range produces the scrub-through artefact.
+    return trigger.start < hi && trigger.end > lo;
+  });
+}
 
 type ScrollToOptions = {
   offset?: number;
@@ -161,16 +189,9 @@ export function SmoothScrollProvider({
       const { offset = 0, immediate = false } = opts;
       const lenis = lenisRef.current;
 
-      if (lenis) {
-        lenis.scrollTo(target, {
-          offset,
-          immediate,
-          duration: immediate ? 0 : 1.1,
-        });
-        return;
-      }
-
-      // Reduced-motion / pre-init path: jump natively.
+      // Resolve to an absolute Y up front. Pin-spacers keep every section's
+      // document offset stable regardless of where the pins currently sit, so
+      // this stays correct even when measured from inside the pinned track.
       const node =
         typeof target === "string"
           ? document.querySelector<HTMLElement>(target)
@@ -178,14 +199,46 @@ export function SmoothScrollProvider({
             ? null
             : target;
 
-      const top =
+      const destination =
         typeof target === "number"
           ? target
           : node
             ? node.getBoundingClientRect().top + window.scrollY + offset
             : 0;
 
-      window.scrollTo({ top, behavior: "auto" });
+      // Reduced-motion / pre-init path: jump natively.
+      if (!lenis) {
+        window.scrollTo({ top: destination, behavior: "auto" });
+        return;
+      }
+
+      if (immediate) {
+        lenis.scrollTo(destination, { immediate: true, force: true });
+        return;
+      }
+
+      const current = window.scrollY;
+      const delta = destination - current;
+      const approach = window.innerHeight * APPROACH_VIEWPORTS;
+
+      if (crossesPin(current, destination)) {
+        // Cover the bulk of the distance instantly — ScrollTrigger settles the
+        // pins at their new state without animating through them — then tween
+        // the last stretch so the arrival still reads as a scroll.
+        lenis.scrollTo(destination - Math.sign(delta) * approach, {
+          immediate: true,
+          force: true,
+        });
+
+        // Next frame, so Lenis has committed the teleport before the tween
+        // reads its start position.
+        requestAnimationFrame(() => {
+          lenisRef.current?.scrollTo(destination, { duration: 0.7, force: true });
+        });
+        return;
+      }
+
+      lenis.scrollTo(destination, { duration: 1.1 });
     },
     []
   );
