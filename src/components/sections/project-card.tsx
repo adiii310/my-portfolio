@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SocialIcon } from "@/components/ui/social-icon";
 import { Inspectable } from "@/components/inspect/inspectable";
+import { cn } from "@/lib/utils";
 import type { Project } from "@/data/projects";
 
 type ProjectCardProps = {
@@ -49,7 +50,12 @@ export function ProjectCard({
         {/* Media — the inner image is oversized so it can translate without gaps */}
         <div
           data-project-media
-          className="relative aspect-16/10 w-full overflow-hidden border-b border-border/60"
+          className={cn(
+            "relative aspect-16/10 w-full overflow-hidden border-b border-border/60",
+            // In the horizontal track the card is height-bounded, so the media
+            // gives up its fixed ratio and absorbs whatever the body leaves.
+            horizontal && "lg:aspect-auto lg:min-h-0 lg:flex-1"
+          )}
         >
           <div
             data-project-image
@@ -81,7 +87,12 @@ export function ProjectCard({
         </div>
 
         {/* Body */}
-        <div className="flex flex-1 flex-col gap-5 p-6 sm:p-8">
+        <div
+          className={cn(
+            "flex flex-1 flex-col gap-5 p-6 sm:p-8",
+            horizontal && "lg:flex-none"
+          )}
+        >
           <header className="flex flex-col gap-2">
             <h3 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
               <span

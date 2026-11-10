@@ -15,14 +15,12 @@ import {
 } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Magnetic } from "@/components/ui/magnetic";
-import { useLenis } from "@/hooks/use-lenis";
+import { ANCHOR_OFFSET, useLenis } from "@/hooks/use-lenis";
 import { useScrollSpy } from "@/hooks/use-scroll-spy";
 import { useUIStore } from "@/store/use-ui-store";
 import { navItems } from "@/data/site";
 import { profile } from "@/data/profile";
 import { cn } from "@/lib/utils";
-
-const NAV_OFFSET = -88;
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -42,7 +40,7 @@ export function Navbar() {
 
   const go = (href: string) => {
     setSheetOpen(false);
-    scrollTo(href, { offset: NAV_OFFSET });
+    scrollTo(href, { offset: ANCHOR_OFFSET });
   };
 
   return (

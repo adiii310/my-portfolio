@@ -33,7 +33,14 @@ export function CaseStudyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-strong max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+      {/*
+        `block` overrides the primitive's `grid`. A capped-height grid sizes its
+        implicit rows to fit the container, which collapsed the aspect-ratio
+        media row to 10px — the image then painted straight over the copy below
+        it and the panel's scrollHeight came out ~400px short of its content.
+        Normal flow lets each child keep its own height, so the panel scrolls.
+      */}
+      <DialogContent className="glass-strong block max-h-[88vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader className="text-left">
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="font-mono text-[10px] font-normal">
@@ -55,7 +62,8 @@ export function CaseStudyDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="relative mt-2 aspect-16/10 w-full overflow-hidden rounded-xl border border-border">
+        {/* Margins, not the primitive's `gap-4`, now that the panel is block flow. */}
+        <div className="relative mt-6 aspect-16/10 w-full overflow-hidden rounded-xl border border-border">
           <Image
             src={project.image}
             alt={project.imageAlt}
@@ -65,7 +73,7 @@ export function CaseStudyDialog({
           />
         </div>
 
-        <div className="mt-6 flex flex-col gap-6">
+        <div className="mt-8 flex flex-col gap-6">
           <CaseSection label="Problem" body={project.problem} />
           <CaseSection label="Solution" body={project.solution} />
           <CaseSection label="Impact" body={project.impact} accent />

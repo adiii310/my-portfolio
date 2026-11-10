@@ -11,6 +11,15 @@ import { CaseStudyDialog } from "./case-study-dialog";
 import { projects, type Project } from "@/data/projects";
 
 /**
+ * Gap between the viewport top and the pinned track, in px.
+ *
+ * The navbar is `position: fixed`, so a track pinned at `top: 0` would sit
+ * underneath it and lose the card's index/context badges. Keep this in sync
+ * with the `lg:h-[...]` clearance on the track below.
+ */
+const PIN_TOP = 96;
+
+/**
  * The showcase.
  *
  * Desktop: the section pins and the track translates horizontally, so vertical
@@ -25,6 +34,7 @@ import { projects, type Project } from "@/data/projects";
 export function Projects() {
   const container = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const hintRef = useRef<HTMLParagraphElement>(null);
   const reducedMotion = useReducedMotion();
 
   const [active, setActive] = useState<Project | null>(null);
@@ -54,12 +64,22 @@ export function Projects() {
           scrollTrigger: {
             trigger: container.current,
             pin: true,
+            // Pin below the fixed navbar rather than at the viewport top,
+            // otherwise the header crops the first rows of every card.
+            start: `top ${PIN_TOP}px`,
             scrub: 0.8,
             // Scroll length maps 1:1 to horizontal distance, so the gesture
             // feels proportional rather than arbitrarily fast or slow.
             end: () => `+=${getDistance()}`,
             invalidateOnRefresh: true,
             anticipatePin: 1,
+            // The hint rides along inside the pinned area, so it has to retire
+            // itself once the gesture is under way — otherwise it still reads
+            // "keep scrolling" at the end of the track.
+            onUpdate: (self) => {
+              const hint = hintRef.current;
+              if (hint) hint.style.opacity = `${Math.max(0, 1 - self.progress * 6)}`;
+            },
           },
         });
 
@@ -87,6 +107,7 @@ export function Projects() {
         return () => {
           imageTweens.forEach((t) => t.scrollTrigger?.kill());
           tween.scrollTrigger?.kill();
+          hintRef.current?.style.removeProperty("opacity");
         };
       });
 
@@ -131,10 +152,16 @@ export function Projects() {
             />
           </div>
 
-          <div ref={container} className="mt-16 lg:overflow-hidden">
+          <div
+            ref={container}
+            // Once pinned, this owns the band between the navbar (PIN_TOP =
+            // 6rem) and a 3rem gutter at the bottom, so a card fits the visible
+            // area instead of running off the fold.
+            className="mt-16 lg:flex lg:h-[calc(100dvh-9rem)] lg:max-h-224 lg:min-h-136 lg:flex-col lg:overflow-hidden"
+          >
             <div
               ref={trackRef}
-              className="flex flex-col gap-8 px-4 sm:px-6 lg:w-max lg:flex-row lg:items-stretch lg:gap-10 lg:px-[max(1.5rem,calc((100vw-72rem)/2))]"
+              className="flex flex-col gap-8 px-4 sm:px-6 lg:w-max lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch lg:gap-10 lg:px-[max(1.5rem,calc((100vw-72rem)/2))]"
             >
               {projects.map((project, index) => (
                 <ProjectCard
@@ -149,12 +176,20 @@ export function Projects() {
               {/* Trailing spacer so the last card can reach centre-screen */}
               <div aria-hidden="true" className="hidden w-[20vw] shrink-0 lg:block" />
             </div>
-          </div>
 
-          {/* Horizontal-scroll affordance */}
-          <p className="mt-10 hidden text-center font-mono text-xs text-muted-foreground lg:block">
-            Keep scrolling — this section moves sideways
-          </p>
+            {/*
+              Horizontal-scroll affordance. It lives *inside* the pinned
+              container on purpose — as a sibling after it, the pin-spacer
+              pushed it a full track-length down the page, so the hint only
+              appeared once the user had already worked the gesture out.
+            */}
+            <p
+              ref={hintRef}
+              className="hidden shrink-0 pt-6 text-center font-mono text-xs text-muted-foreground lg:block"
+            >
+              Keep scrolling — this section moves sideways
+            </p>
+          </div>
         </section>
       </Inspectable>
 

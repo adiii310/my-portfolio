@@ -6,12 +6,22 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 
+import { usePathname } from "next/navigation";
+
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import { useReducedMotion } from "./use-reduced-motion";
+
+/**
+ * How far above a section to stop, so the fixed navbar does not cover its
+ * heading. Shared by the navbar links and by post-navigation anchor restore —
+ * two copies of this number would drift apart.
+ */
+export const ANCHOR_OFFSET = -88;
 
 type ScrollToOptions = {
   offset?: number;
@@ -34,8 +44,9 @@ export function SmoothScrollProvider({
   children: React.ReactNode;
 }) {
   const reducedMotion = useReducedMotion();
+  const pathname = usePathname();
   const lenisRef = useRef<Lenis | null>(null);
-  const [, forceRender] = useState(0);
+  const [instance, setInstance] = useState<Lenis | null>(null);
 
   useEffect(() => {
     // Reduced motion: never instantiate Lenis. Native scrolling is already
@@ -56,7 +67,7 @@ export function SmoothScrollProvider({
     });
 
     lenisRef.current = lenis;
-    forceRender((n) => n + 1); // publish the instance to consumers
+    setInstance(lenis); // publish the instance to consumers
 
     // --- The important part -------------------------------------------------
     // Lenis ships its own requestAnimationFrame loop. Running it alongside
@@ -96,8 +107,54 @@ export function SmoothScrollProvider({
       ScrollTrigger.scrollerProxy(document.documentElement, {});
       lenis.destroy();
       lenisRef.current = null;
+      setInstance(null);
     };
   }, [reducedMotion]);
+
+  /**
+   * Re-measure after a client-side navigation.
+   *
+   * This provider sits in the root layout and never unmounts, so after a route
+   * change ScrollTrigger's cached start/end offsets and Lenis' page dimensions
+   * still describe the page we just left. Pins then engage at the wrong scroll
+   * positions — the pinned Work track gets drawn over the sections above it.
+   *
+   * A `#hash` is worse: Next scrolls to the anchor while the pin-spacers have
+   * not been created yet, so the moment ScrollTrigger inserts them (thousands
+   * of px of extra height) the target slides out from under the viewport and
+   * the user lands in whatever section happens to be at that offset.
+   */
+  useEffect(() => {
+    if (reducedMotion) return;
+
+    let frame = 0;
+
+    const settle = () => {
+      const lenis = lenisRef.current;
+
+      lenis?.resize();
+      ScrollTrigger.refresh();
+
+      // Re-apply the anchor now that the real geometry exists.
+      const id = window.location.hash.slice(1);
+      const target = id ? document.getElementById(id) : null;
+      if (target) {
+        lenis?.scrollTo(target, {
+          offset: ANCHOR_OFFSET,
+          immediate: true,
+          force: true,
+        });
+      }
+    };
+
+    // Two frames: the first lets the incoming page's own mount effects create
+    // their ScrollTriggers, the second lets that layout settle before we measure.
+    frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(settle);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [pathname, reducedMotion]);
 
   const scrollTo = useCallback(
     (target: string | HTMLElement | number, opts: ScrollToOptions = {}) => {
@@ -136,13 +193,14 @@ export function SmoothScrollProvider({
   const stop = useCallback(() => lenisRef.current?.stop(), []);
   const start = useCallback(() => lenisRef.current?.start(), []);
 
-  return (
-    <LenisContext.Provider
-      value={{ lenis: lenisRef.current, scrollTo, stop, start }}
-    >
-      {children}
-    </LenisContext.Provider>
+  // Stable identity: consumers run effects keyed on this value, and a fresh
+  // object every render would stop/start Lenis on unrelated re-renders.
+  const value = useMemo(
+    () => ({ lenis: instance, scrollTo, stop, start }),
+    [instance, scrollTo, stop, start]
   );
+
+  return <LenisContext.Provider value={value}>{children}</LenisContext.Provider>;
 }
 
 export function useLenis(): LenisContextValue {
@@ -151,4 +209,14 @@ export function useLenis(): LenisContextValue {
     throw new Error("useLenis must be used inside <SmoothScrollProvider>.");
   }
   return ctx;
+}
+
+/**
+ * Same as useLenis, but returns null outside the provider instead of throwing.
+ *
+ * For shared UI primitives (dialogs, drawers) that must work in isolation —
+ * Storybook, tests — yet still need to pause smooth scroll when they open.
+ */
+export function useLenisOptional(): LenisContextValue | null {
+  return useContext(LenisContext);
 }
